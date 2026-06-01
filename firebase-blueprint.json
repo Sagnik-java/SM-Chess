@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "game": {
+      "title": "Game",
+      "description": "A multiplayer chess game instance",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "playing", "finished"]
+        },
+        "whitePlayerId": { "type": ["string", "null"] },
+        "whitePlayerName": { "type": ["string", "null"] },
+        "blackPlayerId": { "type": ["string", "null"] },
+        "blackPlayerName": { "type": ["string", "null"] },
+        "fen": { "type": "string" },
+        "turn": { "type": "string", "enum": ["w", "b"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "winner": { "type": ["string", "null"] }
+      },
+      "required": ["status", "fen", "turn", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/games/{gameId}": {
+      "schema": { "$ref": "#/entities/game" },
+      "description": "Active and finished chess games"
+    }
+  }
+}

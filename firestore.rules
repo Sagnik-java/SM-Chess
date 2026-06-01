@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    function isValidGame(data) {
+      return data.keys().hasAll(['status', 'fen', 'turn', 'createdAt', 'updatedAt'])
+        && data.status in ['waiting', 'playing', 'finished']
+        && data.fen is string && data.fen.size() <= 200
+        && data.turn in ['w', 'b']
+        && (!data.keys().hasAny(['whitePlayerId']) || data.whitePlayerId == null || (data.whitePlayerId is string && data.whitePlayerId.size() <= 128))
+        && (!data.keys().hasAny(['blackPlayerId']) || data.blackPlayerId == null || (data.blackPlayerId is string && data.blackPlayerId.size() <= 128))
+        && (!data.keys().hasAny(['whitePlayerName']) || data.whitePlayerName == null || (data.whitePlayerName is string && data.whitePlayerName.size() <= 128))
+        && (!data.keys().hasAny(['blackPlayerName']) || data.blackPlayerName == null || (data.blackPlayerName is string && data.blackPlayerName.size() <= 128))
+        && (!data.keys().hasAny(['winner']) || data.winner == null || (data.winner is string && data.winner.size() <= 128))
+        && (!data.keys().hasAny(['whiteTime']) || data.whiteTime == null || data.whiteTime is number)
+        && (!data.keys().hasAny(['blackTime']) || data.blackTime == null || data.blackTime is number);
+    }
+
+    match /games/{gameId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn()
+        && isValidId(gameId)
+        && isValidGame(incoming())
+        && incoming().status == 'waiting'
+        && incoming().fen == 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+        && incoming().turn == 'w'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().whitePlayerId == request.auth.uid
+        && incoming().blackPlayerId == null
+        && incoming().winner == null
+        && incoming().keys().size() <= 12;
+
+      allow update: if isSignedIn()
+        && isValidGame(incoming())
+        && existing().status != 'finished'
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().status == 'waiting'
+            && incoming().status == 'playing'
+            && incoming().blackPlayerId == request.auth.uid
+            && incoming().whitePlayerId == existing().whitePlayerId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'blackPlayerId', 'blackPlayerName', 'updatedAt'])
+          ) ||
+          (
+            existing().status == 'playing'
+            && (request.auth.uid == existing().whitePlayerId || request.auth.uid == existing().blackPlayerId)
+            && incoming().status in ['playing', 'finished']
+            && incoming().whitePlayerId == existing().whitePlayerId
+            && incoming().blackPlayerId == existing().blackPlayerId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['fen', 'turn', 'status', 'winner', 'updatedAt', 'whiteTime', 'blackTime'])
+          ) ||
+          (
+            existing().status == 'waiting'
+            && existing().whitePlayerId == request.auth.uid
+            && incoming().status == 'finished'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+    }
+  }
+}
